@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Real Multi-Language Terminal</title>
+<style>
+  :root{color-scheme:dark;--bg:#080b10;--panel:#0e131a;--panel2:#111923;--line:#25303d;--text:#e7edf5;--muted:#8d9aaa;--accent:#65d68a;--danger:#ff6b6b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  .app{min-height:100vh;display:flex;flex-direction:column}
+  header{height:58px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 16px;background:#0a0e14;position:sticky;top:0;z-index:2}
+  .logo{font-weight:800;letter-spacing:.3px;white-space:nowrap}
+  .badge{font-size:11px;padding:3px 7px;border:1px solid #2c4938;border-radius:999px;color:var(--accent);background:#0c1710}
+  .spacer{flex:1}
+  button,select,input,textarea{font:inherit}
+  button,select,input{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:7px}
+  button{cursor:pointer;padding:8px 12px}
+  button:hover{border-color:#3c4c60}
+  .run{background:#17351f;border-color:#2c7142;color:#bdf3cc;font-weight:700}
+  .run:hover{background:#1b4326}
+  main{display:grid;grid-template-columns:280px 1fr;grid-template-rows:minmax(0,1fr) auto;min-height:calc(100vh - 58px)}
+main>.dashboard{grid-column:1 / -1;grid-row:2}
+  aside{border-right:1px solid var(--line);padding:14px;background:#0a0f15;overflow:auto;grid-column:1;grid-row:1}
+  .section{margin-bottom:16px}
+  label{display:block;color:var(--muted);font-size:12px;margin:0 0 6px}
+  select,input{width:100%;padding:9px}
+  .small{color:var(--muted);font-size:12px}
+  .status{padding:9px;border:1px solid var(--line);border-radius:7px;background:var(--panel);margin-top:8px}
+  .status.ok{border-color:#27553a;color:#9de8b4}
+  .status.err{border-color:#613030;color:#ffadad}
+  .workspace{display:grid;grid-template-rows:minmax(280px,1fr) minmax(180px,35vh);min-width:0;grid-column:2;grid-row:1}
+  .editorWrap,.outputWrap{min-width:0;display:flex;flex-direction:column}
+  .bar{height:42px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line);background:#0c1118}
+  .bar .title{font-weight:700}
+  .bar .meta{color:var(--muted);font-size:12px}
+  #code{flex:1;width:100%;resize:none;border:0;outline:0;border-radius:0;background:#090d12;color:#dce6f2;padding:16px;font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;tab-size:4}
+  #output{flex:1;margin:0;padding:14px;overflow:auto;background:#070a0e;color:#d9e4ef;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap}
+  .out-head{color:var(--muted)}
+  .oktxt{color:#9de8b4}.errtxt{color:#ff9d9d}.warntxt{color:#ffd28a}
+  .cmd{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);background:#0b1017}
+  #command{flex:1;padding:9px}
+  .hint{margin-top:10px;color:var(--muted);font-size:12px}
+  .kbd{font-family:ui-monospace,monospace;border:1px solid var(--line);padding:1px 5px;border-radius:4px;background:#111720}
+  @media(max-width:800px){main{grid-template-columns:1fr;grid-template-rows:auto auto auto}.workspace{grid-column:1;grid-row:2;grid-template-rows:55vh 45vh}aside{grid-column:1;grid-row:1;border-right:0;border-bottom:1px solid var(--line);max-height:42vh}.dashboard{grid-column:1!important;grid-row:3!important}.spacer{display:none}.badge{display:none}}
+
+.dashboard{border-top:1px solid var(--line);background:#080c11;padding:14px;display:grid;grid-template-columns:1.1fr 1fr 1.1fr;gap:14px}
+.chart{border:1px solid var(--line);border-radius:9px;background:#0c1118;min-width:0;overflow:hidden}
+.chartTitle{padding:10px 12px;border-bottom:1px solid var(--line);font-weight:700}
+.chartSub{padding:7px 12px 0;color:var(--muted);font-size:11px}
+.chartBody{height:220px;padding:10px}
+.chartBody canvas{width:100%;height:100%;display:block}
+.systemList{height:100%;overflow:auto;padding:10px;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.systemRow{display:flex;justify-content:space-between;gap:10px;padding:4px 2px;border-bottom:1px solid #18212b}
+.systemRow:last-child{border-bottom:0}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#657384;margin-right:6px}
+.dot.live{background:#65d68a}
+.dot.off{background:#8d9aaa}
+@media(max-width:1050px){.dashboard{grid-template-columns:1fr}.chartBody{height:200px}}
+
+  .charts{border-top:1px solid var(--line);background:#0a0f15;padding:14px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  .chart-card{background:#0d131b;border:1px solid var(--line);border-radius:9px;overflow:hidden;min-width:0}
+  .chart-title{padding:10px 12px 2px;font-weight:750}
+  .chart-sub{padding:0 12px 8px;color:var(--muted);font-size:11px}
+  .chart-box{height:210px;padding:8px 10px 10px}
+  .chart-box canvas{display:block;width:100%;height:100%}
+  .chart-note{padding:7px 12px 10px;color:var(--muted);font-size:11px;border-top:1px solid #1d2631}
+  @media(max-width:1000px){.charts{grid-template-columns:1fr 1fr}}
+  @media(max-width:700px){.charts{grid-template-columns:1fr}.chart-box{height:190px}}
+
+
+  .guide{padding:14px;background:#080d13;border-bottom:1px solid var(--line)}
+  .guide-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+  .guide-title{font-weight:800;font-size:15px}
+  .guide-sub{color:var(--muted);font-size:12px;margin-top:2px}
+  .guide-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .guide-card{background:#0d131b;border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0}
+  .guide-card h3{margin:0 0 7px;font-size:13px}
+  .guide-card p,.guide-card li{font-size:12px;color:#b6c1ce}
+  .guide-card p{margin:6px 0}
+  .guide-card ol,.guide-card ul{padding-left:20px;margin:6px 0}
+  .guide-card pre{margin:7px 0;padding:9px;background:#080c11;border:1px solid #1c2631;border-radius:6px;overflow:auto;color:#dce6f2;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .guide.collapsed .guide-grid{display:none}
+  @media(max-width:1050px){.guide-grid{grid-template-columns:1fr 1fr}}
+  @media(max-width:650px){.guide-grid{grid-template-columns:1fr}}
+
+
+  .info-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:12px 14px;background:#090e14;border-bottom:1px solid var(--line)}
+  .metric{background:#0d131b;border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+  .metric-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .metric-value{font-size:20px;font-weight:800;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .metric-detail{font-size:10px;color:var(--muted);margin-top:2px}
+  .guides{padding:14px;background:#090e14;border-bottom:1px solid var(--line);display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:14px}
+  .guide-card{background:#0d131b;border:1px solid var(--line);border-radius:9px;padding:13px;min-width:0}
+  .guide-card h3{margin:0 0 7px;font-size:14px}
+  .guide-card p{margin:5px 0;color:#b5c0cd;font-size:12px}
+  .guide-card ol,.guide-card ul{margin:7px 0 0 18px;padding:0;color:#b5c0cd;font-size:12px}
+  .guide-card li{margin:4px 0}
+  .pill{display:inline-block;padding:2px 6px;border-radius:999px;border:1px solid var(--line);font-size:10px;color:#b9c6d5;margin:2px 3px 2px 0}
+  .live-pill{border-color:#2c7142;color:#9de8b4}
+  .warn-pill{border-color:#654f2b;color:#ffd28a}
+  .docs-btn{margin-top:8px;width:100%}
+  @media(max-width:1000px){.info-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.guides{grid-template-columns:1fr 1fr}}
+  @media(max-width:700px){.info-grid{grid-template-columns:1fr 1fr}.guides{grid-template-columns:1fr}.metric-value{font-size:18px}}
+
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="logo">REAL TERMINAL</div><span class="badge">LIVE CODE EXECUTION</span>
+  <div class="spacer"></div>
+  <button id="shareBtn">Share run</button>
+  <button id="runBtn" class="run">▶ Run <span class="small">(Ctrl+Enter)</span></button>
+</header>
+
+<section class="charts" aria-label="Terminal system charts">
+  <div class="chart-card">
+    <div class="chart-title">Chart 1 — Code execution</div>
+    <div class="chart-sub">Real runs recorded by this page</div>
+    <div class="chart-box"><canvas id="chartRuns"></canvas></div>
+    <div class="chart-note" id="runsNote">No runs yet. Run code to populate this chart.</div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-title">Chart 2 — System coding</div>
+    <div class="chart-sub">How source code moves through the system</div>
+    <div class="chart-box"><canvas id="chartPipeline"></canvas></div>
+    <div class="chart-note">Browser editor → API request → real compiler/runtime → sandbox → terminal output</div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-title">Chart 3 — All systems</div>
+    <div class="chart-sub">Terminal subsystems and live capabilities</div>
+    <div class="chart-box"><canvas id="chartSystems"></canvas></div>
+    <div class="chart-note" id="systemsNote">Loading catalog and live runtime information…</div>
+  </div>
+</section>
+
+<section class="guide">
+  <div class="guide-head">
+    <div>
+      <div class="guide-title">Guidelines, Tutorials & Tools</div>
+      <div class="guide-sub">Learn how to use the real execution terminal safely and effectively.</div>
+    </div>
+    <button id="guideToggle">Hide guides</button>
+  </div>
+
+  <div class="guide-grid">
+    <article class="guide-card">
+      <h3>🚀 Quick start</h3>
+      <ol>
+        <li>Choose a language from the <b>Language</b> menu.</li>
+        <li>Choose an available real compiler/runtime.</li>
+        <li>Write or paste your source code.</li>
+        <li>Add <b>stdin</b> if your program expects input.</li>
+        <li>Press <b>Run</b> or <span class="kbd">Ctrl+Enter</span>.</li>
+        <li>Read the actual compiler/program output in the terminal.</li>
+      </ol>
+    </article>
+
+    <article class="guide-card">
+      <h3>📚 Tutorial 1 — First program</h3>
+      <p>Select <b>Python</b>, then run:</p>
+      <pre>name = input("Name: ")
+print("Hello,", name)</pre>
+      <p>Put your name in the <b>stdin</b> box, then run it. The result comes from the real Python runtime.</p>
+    </article>
+
+    <article class="guide-card">
+      <h3>🧪 Tutorial 2 — Compilation errors</h3>
+      <p>Try deliberately making a syntax error. The terminal will show the real compiler/runtime error.</p>
+      <p>Fix the source and run it again. This is useful for learning debugging instead of receiving pre-written fake output.</p>
+    </article>
+
+    <article class="guide-card">
+      <h3>⌨️ Terminal commands</h3>
+      <pre>help
+run
+clear
+lang
+compiler</pre>
+      <p>Type commands into the command bar at the bottom of the terminal.</p>
+    </article>
+
+    <article class="guide-card">
+      <h3>🔧 Options & input</h3>
+      <ul>
+        <li><b>stdin:</b> data supplied to your program.</li>
+        <li><b>Compiler options:</b> options passed to the compiler when supported.</li>
+        <li><b>Runtime arguments:</b> arguments supplied when supported.</li>
+        <li>Not every language/runtime accepts every option.</li>
+      </ul>
+    </article>
+
+    <article class="guide-card">
+      <h3>🛡️ Safety & limitations</h3>
+      <p>Execution is sandboxed by the remote service. The page does not pretend that every catalog entry has a compiler.</p>
+      <p>A language can appear in the catalog while showing <b>no live runtime available</b>. In that case the terminal refuses to simulate execution.</p>
+    </article>
+
+    <article class="guide-card">
+      <h3>🌐 How the real system works</h3>
+      <p><b>Browser editor → HTTPS request → real compiler/runtime → sandboxed execution → stdout/stderr → terminal.</b></p>
+      <p>The large language catalog is local data in this page; the live compiler list is fetched separately from the execution service.</p>
+    </article>
+
+    <article class="guide-card">
+      <h3>⏱️ Loading time</h3>
+      <p><b>The 693-name catalog does not need minutes to load.</b> It is embedded in the HTML, so the browser can populate it immediately after the page loads.</p>
+      <p>The live compiler/runtime list requires an internet request. On a normal connection this is usually <b>well under a minute</b>, often only a few seconds. A slow connection or unavailable service can take longer.</p>
+      <p><b>Important:</b> there is no fixed number of minutes I can guarantee because network speed and the remote service determine the live-list response time.</p>
+    </article>
+
+    <article class="guide-card">
+      <h3>🐞 Troubleshooting</h3>
+      <ul>
+        <li><b>Catalog appears but compiler says unavailable:</b> that language is listed, but the live service did not report a matching runtime.</li>
+        <li><b>Run fails:</b> inspect compiler/program output and fix the source.</li>
+        <li><b>Nothing loads:</b> check your internet connection and reload Chrome.</li>
+        <li><b>Input program waits:</b> provide the required data in the stdin box.</li>
+      </ul>
+    </article>
+  </div>
+</section>
+
+<section class="info-grid">
+  <div class="metric">
+    <div class="metric-label">Programming languages</div>
+    <div class="metric-value" id="languageCount">693</div>
+    <div class="metric-detail">catalog entries on this website</div>
+  </div>
+  <div class="metric">
+    <div class="metric-label">Live runtimes</div>
+    <div class="metric-value" id="liveCount">—</div>
+    <div class="metric-detail">language groups reported by the real service</div>
+  </div>
+  <div class="metric">
+    <div class="metric-label">Catalog load time</div>
+    <div class="metric-value" id="catalogLoad">0 min</div>
+    <div class="metric-detail">embedded catalog loads with the page</div>
+  </div>
+  <div class="metric">
+    <div class="metric-label">Live service load</div>
+    <div class="metric-value" id="serviceLoad">loading…</div>
+    <div class="metric-detail">measured network time, not a fixed promise</div>
+  </div>
+</section>
+
+<section class="guides">
+  <div class="guide-card">
+    <h3>📘 Quick tutorial</h3>
+    <ol>
+      <li>Choose a language from the <b>Language</b> menu.</li>
+      <li>Choose the available real compiler/runtime.</li>
+      <li>Write your program in the editor.</li>
+      <li>Add <b>stdin</b> if your program expects input.</li>
+      <li>Press <b>Run</b> or <span class="kbd">Ctrl+Enter</span>.</li>
+      <li>Read the real compiler and program output in Terminal Output.</li>
+    </ol>
+    <p><span class="pill live-pill">REAL EXECUTION</span><span class="pill">SANDBOXED</span></p>
+  </div>
+
+  <div class="guide-card">
+    <h3>🧭 Guidelines & best practices</h3>
+    <ul>
+      <li>Start with a small program to verify the selected runtime.</li>
+      <li>Use compiler options only when you know the compiler accepts them.</li>
+      <li>Use stdin for input instead of hard-coding test data.</li>
+      <li>Check compiler errors before changing your program.</li>
+      <li>Never put passwords, API keys, or private information in code.</li>
+      <li>Remote execution depends on internet/service availability.</li>
+    </ul>
+    <p><span class="pill warn-pill">IMPORTANT</span> A catalog entry does not guarantee a live runtime.</p>
+  </div>
+
+  <div class="guide-card">
+    <h3>⚙️ Important system information</h3>
+    <ul>
+      <li><b>693</b> language names are listed in the catalog.</li>
+      <li>The live compiler list is checked when the page starts.</li>
+      <li>Chart 1 counts actual runs made from this page.</li>
+      <li>Unsupported languages are never given fake output.</li>
+      <li>Chrome cannot directly become a native OS shell from a normal webpage.</li>
+      <li>Execution is performed by a real remote sandbox service.</li>
+    </ul>
+    <button class="docs-btn" id="aboutBtn">Show terminal help</button>
+  </div>
+</section>
+
+<main>
+<aside>
+  <div class="section">
+    <label for="language">Language</label>
+    <select id="language"><option>Loading languages…</option></select>
+  </div>
+  <div class="section">
+    <label for="compiler">Compiler / runtime</label>
+    <select id="compiler"><option>Loading…</option></select>
+  </div>
+  <div class="section">
+    <label for="stdin">Standard input (stdin)</label>
+    <textarea id="stdin" rows="5" style="width:100%;resize:vertical;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:9px"></textarea>
+  </div>
+  <div class="section">
+    <label for="options">Compiler options (optional)</label>
+    <input id="options" placeholder="e.g. warning,gnu++17">
+  </div>
+  <div class="section">
+    <label for="runtime">Runtime arguments (optional)</label>
+    <input id="runtime" placeholder="e.g. --help">
+  </div>
+  <div id="status" class="status">Connecting to the live compiler service…</div>
+  <div class="hint">
+    This is not a fake output generator. Code is sent to a real sandboxed compiler/runtime service and the returned compiler and program output is displayed here.
+    <br><br>
+    It requires an internet connection. Browser security prevents a standalone HTML page from becoming a native local OS shell.
+  </div>
+</aside>
+
+<section class="workspace">
+  <div class="editorWrap">
+    <div class="bar"><span class="title">source</span><span id="fileMeta" class="meta">main.txt</span></div>
+    <textarea id="code" spellcheck="false"></textarea>
+  </div>
+  <div class="outputWrap">
+    <div class="bar"><span class="title">terminal output</span><span id="timing" class="meta"></span></div>
+    <pre id="output"><span class="out-head">Ready. Select a language and press Run.</span></pre>
+    <div class="cmd">
+      <input id="command" placeholder="Commands: help, run, clear, lang, compiler">
+      <button id="commandBtn">Enter</button>
+    </div>
+  </div>
+</section>
+
+<div class="dashboard">
+  <div class="chart">
+    <div class="chartTitle">Chart 1 — Code execution health</div>
+    <div class="chartSub">Live results from actual compiler/runtime runs</div>
+    <div class="chartBody"><canvas id="chartHealth"></canvas></div>
+  </div>
+
+  <div class="chart">
+    <div class="chartTitle">Chart 2 — System coding pipeline</div>
+    <div class="chartSub">How source code moves through the real execution system</div>
+    <div class="chartBody"><canvas id="chartPipeline"></canvas></div>
+  </div>
+
+  <div class="chart">
+    <div class="chartTitle">Chart 3 — All language systems</div>
+    <div class="chartSub">Catalog size and currently reported live runtimes</div>
+    <div class="systemList" id="systemList"></div>
+  </div>
+</div>
+</main>
+</div>
+
+<script>
+const PAGE_START=performance.now();
+const API="https://wandbox.org/api";
+const CATALOG_LANGUAGES = ["A.NET", "A-0 System", "A+", "ABAP", "ABC", "ACC", "Accent", "Action!", "ActionScript", "Actor", "Ada", "Adenine", "AdvPL", "Agda", "Agilent VEE", "Agora", "AIMMS", "Aldor", "Alef", "ALF", "ALGOL 58", "ALGOL 60", "ALGOL 68", "ALGOL W", "Alice ML", "Alma-0", "AmbientTalk", "Amiga E", "AMPL", "Analitik", "AngelScript", "Apache Pig Latin", "Apex", "APL", "App Inventor", "AppleScript", "APT", "Arc", "ArkTS", "ARexx", "Argus", "Assembly language", "AssemblyScript", "ATS", "AutoHotkey", "AutoIt", "AutoLISP", "Averest", "AWK", "Axum\nB", "Babbage", "Ballerina", "Bash", "BASIC", "Batch file", "bc", "BCPL", "BeanShell", "BETA", "BLISS", "Blockly", "BlooP", "Boo", "Boomerang", "Bosque\nC", "C--", "C++", "C*", "C#", "C/AL", "Caché ObjectScript", "C Shell", "Calcpad", "Caml", "Carbon", "Catrobat", "Cayenne", "Cecil", "CESIL", "CEEMAC", "Céu", "Ceylon", "CFEngine", "Cg", "Ch", "Chapel", "Charm", "CHICKEN", "CHILL", "CHIP-8", "ChucK", "Cilk", "Claire", "Clarion", "Clean", "Clipper", "CLIPS", "CLIST", "Clojure", "CLU", "CMS-2", "COBOL", "CobolScript", "Cobra", "CoffeeScript", "ColdFusion", "COMAL", "COMIT", "Common Intermediate Language", "Common Lisp", "COMPASS", "Component Pascal", "COMTRAN", "Concurrent Pascal", "Constraint Handling Rules", "Control Language", "Coq", "Rocq", "CORAL", "CorVision", "COWSEL", "CPL", "Cryptol", "Crystal", "Csound", "Cuneiform", "Curl", "Curry", "Cybil", "Cyclone", "Cypher Query Language", "Cython\nD", "Dart", "Darwin", "DataFlex", "Datalog", "DATATRIEVE", "dBase", "dc", "DCL", "Delphi", "DIBOL", "DinkC", "Dog", "Draco", "DRAKON", "Dylan", "DYNAMO", "DAX\nE", "Ease", "Easy PL/I", "EASYTRIEVE PLUS", "ECMAScript", "Edinburgh IMP", "EGL", "Eiffel", "ELAN", "Elixir", "Elm", "Emacs Lisp", "Emerald", "Epigram", "EPL", "Erlang", "es", "Escher", "ESPOL", "Esterel", "Etoys", "Euclid", "Euler", "Euphoria", "EusLisp", "CMS EXEC", "EXEC 2", "Executable UML", "Ezhil\nF", "F#", "F*", "Factor", "Fantom", "FAUST", "FFP", "fish", "Fjölnir", "FL", "Flavors", "Flex", "Flix", "FlooP", "FLOW-MATIC", "FOCAL", "FOCUS", "FOIL", "FORMAC", "@Formula", "Forth", "Fortran", "Fortress", "FoxBase/FoxPro", "FP", "Franz Lisp", "Futhark\nG", "Game Maker Language", "GameMonkey Script", "GAMS", "GAP", "G-code", "GDScript", "Geometric Description Language", "GEORGE", "Gleam", "GLSL", "GNU E", "GNU Guile", "GNU Octave", "Go", "Go!", "GOAL", "Gödel", "Golo", "GOM", "Google Apps Script", "Gosu", "GOTRAN", "GPSS", "GraphTalk", "GRASS", "Grasshopper", "Groovy\nH", "Hack", "HAGGIS", "HAL/S", "Halide", "Hamilton C shell", "Harbour", "Hartmann pipelines", "Haskell", "Haxe", "Hermes", "High Level Assembly", "HLSL", "Hollywood", "HolyC", "Hop", "Hope", "Hopscotch", "Hume", "HyperTalk", "Hy\nI", "IBM Basic assembly language", "IBM Informix-4GL", "IBM RPG", "Icon", "IDL", "Idris", "Inform", "Instruction List", "Io", "ISLISP\nJ", "J", "J#", "J++", "JADE", "JAL", "Janus", "JASS", "Java", "JavaFX Script", "JavaScript", "JCL", "JEAN", "Jess", "Join Java", "JOSS", "Joule", "JOVIAL", "Joy", "jq", "JScript", "JScript .NET", "Julia", "Jython\nK", "K", "Kaleidoscope", "Karel", "KEE", "Kent Recursive Calculator", "KiXtart", "Klerer-May System", "Knowledge Interchange Format", "Kodu", "Kojo", "Kotlin", "KRL", "KRYPTON", "KornShell", "Kv\nL", "LabVIEW", "Ladder", "Language H", "LANSA", "Lasso", "LC-3", "Lean", "Legoscript", "LIL", "LilyPond", "Limbo", "LINC", "Lingo", "LINQ", "LIS", "LISA", "Lisp", "Lithe", "Little b", "LiveCode", "LiveScript", "LLL", "Logo", "Logtalk", "LotusScript", "LPC", "LSE", "LSL", "Lua", "Luau", "Lucid", "Lustre", "LYaPAS", "Lynx\nM", "M Formula language", "M4", "Machine code", "MAD", "MAD/I", "Magik", "Magma", "Maple", "MAPPER", "MARK-IV", "Mary", "MASM", "MATLAB", "MATH-MATIC", "Maude", "Max", "Maxima", "MAXScript", "Maya MEL", "MDL", "Mercury", "Mesa", "MHEG-5", "Microcode", "Microsoft Power Fx", "MIIS", "MIMIC", "Mirah", "Miranda", "MIVA Script", "ML", "Model 204", "Modelica", "Modula", "Modula-2", "Modula-3", "Mohol", "Mojo", "MOO", "Mortran", "Mouse", "MPD", "MSL", "MUMPS", "MuPAD", "Mystic Programming Language\nN", "Napier88", "NASM", "Neko", "NELIAC", "Nemerle", "NESL", "Net.Data", "NetLogo", "NetRexx", "NewLISP", "NEWP", "Newspeak", "NewtonScript", "Nial", "Nim", "Nix", "Nord Programming Language", "Not eXactly C", "Not Quite C", "Nu", "NSIS", "NWScript", "NXT-G\nO", "o:XML", "Oak", "Oberon", "OBJ2", "Object Lisp", "ObjectLOGO", "Object REXX", "Object Pascal", "Objective-C", "Obliq", "OCaml", "occam", "occam-pi", "OmniMark", "Opa", "Opal", "Open Programming Language", "OpenCL", "OpenEdge ABL", "OpenQASM", "OPS5", "OptimJ", "Orc", "ORCA/Modula-2", "Oriel", "Orwell", "Oxygene", "Oz\nP", "P", "P4", "P""", "ParaSail", "PARI/GP", "Pascal", "Pascal Script", "PCASTL", "PCF", "PDL", "PEARL", "PeopleCode", "Perl", "Pharo", "PHP", "Pico", "Picolisp", "Pict", "Pike", "PILOT", "Pipelines", "Pizza", "PL-11", "PL/0", "PL/B", "PL/C", "PL/I", "PL/M", "PL/P", "PL/S", "PL/SQL", "PL360", "PLANC", "Plankalkül", "Planner", "PLEX", "PLEXIL", "Plus", "Pony", "POP-11", "POP-2", "PostScript", "PortablE", "POV-Ray SDL", "PowerBuilder", "Powerhouse", "PowerShell", "Polymorphic Programming Language", "Processing", "Processing.js", "Prograph", "Project Verona", "Prolog", "PROMAL", "Promela", "PROSE modeling language", "PROTEL", "Pro*C", "Pure", "Pure Data", "PureScript", "Python\nQ", "Q", "Q#", "Qalb", ".QL", "QPL", "QtScript", "QuakeC", "Quantum Computation Language\nR", "R", "R++", "Racket", "Raku", "RAPID", "Rapira", "Ratfiv", "Ratfor", "rc", "Reason", "REBOL", "Red", "Redcode", "REFAL", "ReScript", "REXX", "RPG", "RPL", "RSL", "RTL/2", "Ruby", "Rust\nS", "S", "S-Lang", "S-PLUS", "S2", "S3", "SA-C", "SabreTalk", "SAIL", "SAKO", "SAS", "SASL", "Sather", "Sawzall", "SBL", "Scala", "Scheme", "Scilab", "Scratch", "ScratchJr", "Script.NET", "sed", "Seed7", "Self", "SenseTalk", "SequenceL", "Serpent", "SETL", "Short Code", "SIGNAL", "SiMPLE", "SIMPOL", "SIMSCRIPT", "Simula", "Simulink", "SISAL", "SKILL", "SLIP", "SMALL", "Smalltalk", "SML", "Snap!", "SNOBOL", "Snowball", "SOL", "Solidity", "SOPHAEROS", "Source", "SPARK", "Speakeasy", "Speedcode", "SPIN", "SP/k", "SPL", "SPS", "SQL", "SQR", "Squeak", "Squirrel", "SR", "S/SL", "Starlogo", "Stata", "Stateflow", "Strand", "Strongtalk", "Structured Text", "Subtext", "SuperCollider", "Superplan", "SuperTalk", "Swift", "SYCL", "SYMPL\nT", "T", "TACL", "Tcl", "Tea", "TELCOMP", "Tensilica Instruction Extension", "TeX", "TADS", "TECO", "TPU", "TMG", "Tom", "Topspeed", "TRAC", "Transact-SQL", "Transaction Application Language", "Transcript", "TTCN", "TTM", "Turing", "TUTOR", "TXL", "TypeScript", "Tynker\nU", "Ubercode", "UCSD Pascal", "Umple", "Unicon", "Uniface", "UNITY", "UnrealScript\nV", "V", "Vala", "Verse", "Vim script", "Viper", "Visual DataFlex", "Visual DialogScript", "Visual FoxPro", "Visual J++", "Visual LISP", "Visual Objects", "Visual Prolog\nW", "WATFIV", "WebAssembly", "WebDNA", "Whiley", "Wolfram Language", "Wyvern\nX", "X++", "X10", "XBL", "XC", "XL", "Xod", "Xojo", "XOTcl", "XPL", "XPL0", "XQuery", "XSB", "XSLT", "Xtend\nY", "Yorick", "YQL\nZ", "Z++", "Z shell", "Zebra/ZPL", "ZetaLisp", "Zig", "Zonnon", "ZOPL", "ZPL", "Ada 2022", "ClojureScript", "CommonJS", "Deno JavaScript", "Dhall", "Elvish", "Fennel", "Grain", "Hare", "Idris 2", "Janet", "Jai", "Koka", "Lobster", "NimScript", "Odin", "Roc", "Rhai", "Sass", "Vim9script", "Vale", "Verilog", "SystemVerilog", "VHDL", "WebAssembly Text Format", "Wren"];
+let compilers=[];
+let byLanguage=new Map();
+document.addEventListener("DOMContentLoaded",()=>{ document.getElementById("languageCount").textContent=CATALOG_LANGUAGES.length.toLocaleString(); });
+
+const examples={
+  "C":"#include <stdio.h>\\nint main(void){ printf(\"Hello from real C!\\\\n\"); return 0; }",
+  "C++":"#include <iostream>\\nint main(){ std::cout << \"Hello from real C++!\\\\n\"; }",
+  "C#":"using System;\\nclass Program { static void Main(){ Console.WriteLine(\"Hello from real C#!\"); } }",
+  "Go":"package main\\nimport \"fmt\"\\nfunc main(){ fmt.Println(\"Hello from real Go!\") }",
+  "Java":"class Main { public static void main(String[] args){ System.out.println(\"Hello from real Java!\"); } }",
+  "JavaScript":"console.log(\"Hello from real JavaScript!\");",
+  "TypeScript":"const message: string = \"Hello from real TypeScript!\";\\nconsole.log(message);",
+  "Python":"print(\"Hello from real Python!\")",
+  "Ruby":"puts \"Hello from real Ruby!\"",
+  "Rust":"fn main(){ println!(\"Hello from real Rust!\"); }",
+  "PHP":"<?php echo \"Hello from real PHP!\\n\"; ?>",
+  "Perl":"print \"Hello from real Perl!\\n\";",
+  "Lua":"print(\"Hello from real Lua!\")",
+  "R":"cat(\"Hello from real R!\\n\")",
+  "Swift":"print(\"Hello from real Swift!\")",
+  "Kotlin":"fun main() { println(\"Hello from real Kotlin!\") }",
+  "Scala":"object Main extends App { println(\"Hello from real Scala!\") }",
+  "Haskell":"main = putStrLn \"Hello from real Haskell!\"",
+  "D":"import std.stdio; void main(){ writeln(\"Hello from real D!\"); }",
+  "Nim":"echo \"Hello from real Nim!\"",
+  "Crystal":"puts \"Hello from real Crystal!\"",
+  "Elixir":"IO.puts \"Hello from real Elixir!\"",
+  "Erlang":"-module(main).\\n-export([main/0]).\\nmain() -> io:format(\"Hello from real Erlang!~n\").",
+  "Bash":"echo \"Hello from real Bash!\""
+};
+
+function setStatus(msg,kind=""){ const el=document.getElementById("status"); el.textContent=msg; el.className="status "+kind; }
+function escapeText(s){return String(s??"");}
+
+
+const runStats = {success:0, failed:0, times:[]};
+
+function setupCanvas(canvas){
+  const dpr=Math.max(1,window.devicePixelRatio||1);
+  const rect=canvas.getBoundingClientRect();
+  canvas.width=Math.max(1,Math.round(rect.width*dpr));
+  canvas.height=Math.max(1,Math.round(rect.height*dpr));
+  const ctx=canvas.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx,w:rect.width,h:rect.height};
+}
+function drawText(ctx,text,x,y,size=11,align="left"){
+  ctx.font=`${size}px system-ui,-apple-system,Segoe UI,Arial,sans-serif`;
+  ctx.textAlign=align;ctx.textBaseline="middle";ctx.fillStyle="#9aa7b6";ctx.fillText(text,x,y);
+}
+function line(ctx,x1,y1,x2,y2){ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.strokeStyle="#26313d";ctx.lineWidth=1;ctx.stroke();}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();ctx.roundRect(x,y,w,h,r);
+}
+
+function drawRuns(){
+  const {ctx,w,h}=setupCanvas(document.getElementById("chartRuns"));
+  ctx.clearRect(0,0,w,h);
+  const pad={l:32,r:12,t:12,b:28}, cw=w-pad.l-pad.r, ch=h-pad.t-pad.b;
+  const total=runStats.success+runStats.failed;
+  const vals=[runStats.success,runStats.failed];
+  const labels=["Success","Failed"];
+  const max=Math.max(1,...vals);
+  for(let i=0;i<4;i++){
+    const y=pad.t+ch-(i/3)*ch;
+    line(ctx,pad.l,y,pad.l+cw,y);
+    drawText(ctx,String(Math.round(max*i/3)),pad.l-7,y,10,"right");
+  }
+  const bw=Math.min(70,cw/3);
+  vals.forEach((v,i)=>{
+    const x=pad.l+(i+.5)*cw/2-bw/2;
+    const bh=(v/max)*ch;
+    ctx.fillStyle=i===0?"#65d68a":"#ff7777";
+    roundRect(ctx,x,pad.t+ch-bh,bw,bh,5);ctx.fill();
+    drawText(ctx,String(v),x+bw/2,pad.t+ch-bh-10,11,"center");
+    drawText(ctx,labels[i],x+bw/2,pad.t+ch+16,10,"center");
+  });
+  document.getElementById("runsNote").textContent=total
+    ? `${total} real execution${total===1?"":"s"} • ${runStats.success} succeeded • ${runStats.failed} failed`
+    : "No runs yet. Run code to populate this chart.";
+}
+
+function drawPipeline(){
+  const {ctx,w,h}=setupCanvas(document.getElementById("chartPipeline"));
+  ctx.clearRect(0,0,w,h);
+  const labels=["Editor","API","Compiler","Sandbox","Output"];
+  const boxW=Math.min(82,(w-28)/5-5), boxH=44, gap=(w-28-boxW*5)/4;
+  const y=h/2-boxH/2;
+  labels.forEach((label,i)=>{
+    const x=8+i*(boxW+gap);
+    ctx.fillStyle="#111923";ctx.strokeStyle="#334152";ctx.lineWidth=1.2;
+    roundRect(ctx,x,y,boxW,boxH,7);ctx.fill();ctx.stroke();
+    drawText(ctx,label,x+boxW/2,y+boxH/2,10,"center");
+    if(i<labels.length-1){
+      const x1=x+boxW+3,x2=x+boxW+gap-3,yy=y+boxH/2;
+      ctx.strokeStyle="#65d68a";ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(x1,yy);ctx.lineTo(x2,yy);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(x2-5,yy-4);ctx.lineTo(x2,yy);ctx.lineTo(x2-5,yy+4);ctx.stroke();
+    }
+  });
+  drawText(ctx,"real source code",8,h-13,10);
+  drawText(ctx,"real result",w-8,h-13,10,"right");
+}
+
+function drawSystems(){
+  const {ctx,w,h}=setupCanvas(document.getElementById("chartSystems"));
+  ctx.clearRect(0,0,w,h);
+  const live=byLanguage ? byLanguage.size : 0;
+  const catalogCount=CATALOG_LANGUAGES.length;
+  const bars=[
+    ["Language catalog",catalogCount],
+    ["Live language groups",live],
+    ["Real execution path",1],
+    ["Browser terminal UI",1]
+  ];
+  const max=Math.max(1,...bars.map(x=>x[1]));
+  const left=112,right=12,top=14,bottom=12,row=(h-top-bottom)/bars.length;
+  bars.forEach((b,i)=>{
+    const y=top+i*row+row/2-9;
+    drawText(ctx,b[0],left-8,y+9,9,"right");
+    const bw=Math.max(3,(w-left-right)*(b[1]/max));
+    ctx.fillStyle=i<2?"#65d68a":"#6f8fb2";
+    roundRect(ctx,left,y,w-left-right,18,5);ctx.fill();
+    // mask the unused portion to keep the bars visually compact
+    ctx.fillStyle="#18212c";
+    roundRect(ctx,left+bw,y,(w-left-right)-bw,18,5);ctx.fill();
+    drawText(ctx,String(b[1]),Math.min(w-5,left+bw+6),y+9,9,"left");
+  });
+  document.getElementById("systemsNote").textContent =
+    `${catalogCount} catalog entries • ${live} language groups currently reported by the live service`;
+}
+
+function drawAllCharts(){
+  drawRuns();drawPipeline();drawSystems();
+}
+window.addEventListener("resize",drawAllCharts);
+
+
+async function loadCompilers(){
+  try{
+    const r=await fetch(API+"/list.json",{cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    compilers=await r.json();
+    byLanguage=new Map();
+    for(const c of compilers){
+      if(!c.language || !c.name) continue;
+      if(!byLanguage.has(c.language)) byLanguage.set(c.language,[]);
+      byLanguage.get(c.language).push(c);
+    }
+    fillLanguageCatalog();
+    const serviceMs=Math.round(performance.now()-PAGE_START);
+    document.getElementById("serviceLoad").textContent=(serviceMs/60000).toFixed(3)+" min";
+    document.getElementById("liveCount").textContent=byLanguage.size.toLocaleString();
+    setStatus(`Connected • ${compilers.length} live compiler/runtime entries • loaded in ${(serviceMs/1000).toFixed(2)} s`, "ok"); drawSystems();
+  }catch(e){
+    const serviceMs=Math.round(performance.now()-PAGE_START);
+    document.getElementById("serviceLoad").textContent=(serviceMs/60000).toFixed(3)+" min";
+    document.getElementById("liveCount").textContent="0";
+    setStatus("Live compiler list unavailable: "+e.message+" • catalog still loaded","err");
+    byLanguage=new Map();
+    fillLanguageCatalog();
+    drawSystems();
+  }
+}
+
+function fillLanguageCatalog(){
+  const preferred=["Python","JavaScript","TypeScript","C","C++","C#","Go","Java","Rust","Ruby","PHP","Kotlin","Swift","D","Haskell","Lua","R","Scala","Bash"];
+  const all=[...new Set([...preferred,...CATALOG_LANGUAGES,...byLanguage.keys()])];
+  all.sort((a,b)=>{
+    const ai=preferred.indexOf(a), bi=preferred.indexOf(b);
+    if(ai>=0 || bi>=0) return (ai<0?999:ai)-(bi<0?999:bi);
+    return a.localeCompare(b);
+  });
+  const lang=document.getElementById("language");
+  const old=lang.value;
+  lang.innerHTML="";
+  for(const name of all){
+    const o=document.createElement("option");
+    o.value=name;o.textContent=name;
+    lang.appendChild(o);
+  }
+  lang.value=all.includes(old)?old:(all.includes("Python")?"Python":all[0]);
+  document.getElementById("languageCount").textContent=CATALOG_LANGUAGES.length.toLocaleString();
+  updateCompilers();
+  drawSystems();
+}
+
+function findLiveCompilers(language){
+  const exact=byLanguage.get(language)||[];
+  if(exact.length) return exact;
+  const norm=s=>String(s).toLowerCase().replace(/[^a-z0-9]+/g,"");
+  const n=norm(language);
+  for(const [key,val] of byLanguage.entries()){
+    const k=norm(key);
+    if(k===n || k.includes(n) || n.includes(k)) return val;
+  }
+  const aliases={
+    "C++":["C++","GNU C++"],"C#":["C#","CSharp"],"JavaScript":["JavaScript","Node.js","NodeJS"],
+    "TypeScript":["TypeScript"],"Python":["Python"],"Bash":["Bash","GNU Bash"],
+    "Kotlin":["Kotlin"],"Swift":["Swift"],"Rust":["Rust"],"Ruby":["Ruby"],
+    "PHP":["PHP"],"Perl":["Perl"],"Lua":["Lua"],"R":["R"],"Haskell":["Haskell"],
+    "Go":["Go"],"D":["D"],"Scala":["Scala"],"Java":["Java"],"Fortran":["Fortran"],
+    "Pascal":["Pascal"],"Prolog":["Prolog"],"OCaml":["OCaml"],"Clojure":["Clojure"],
+    "Elixir":["Elixir"],"Erlang":["Erlang"],"Nim":["Nim"],"Crystal":["Crystal"],
+    "Julia":["Julia"],"Zig":["Zig"],"V":["V"],"Dart":["Dart"],"F#":["F#"]
+  };
+  for(const alias of (aliases[language]||[])){
+    if(byLanguage.has(alias)) return byLanguage.get(alias);
+  }
+  return [];
+}
+
+function updateCompilers(){
+  const language=document.getElementById("language").value;
+  const list=findLiveCompilers(language);
+  const sel=document.getElementById("compiler");
+  sel.innerHTML="";
+  if(!list.length){
+    const o=document.createElement("option");
+    o.value=""; o.textContent="No live compiler/runtime currently available";
+    sel.appendChild(o);
+  }else{
+    list.forEach(c=>{
+      const o=document.createElement("option");
+      o.value=c.name;
+      o.textContent=(c.display_name||c.name)+(c.version?" — "+c.version:"");
+      sel.appendChild(o);
+    });
+  }
+  document.getElementById("fileMeta").textContent=extensionFor(language);
+  const code=document.getElementById("code");
+  if(!code.value.trim() && examples[language]) code.value=examples[language];
+  const available=!!list.length;
+  if(available) setStatus(`Live runtime available for ${language}`,"ok");
+  else setStatus(`${language}: listed in the catalog, but no matching live runtime was reported by the execution service`,"err");
+}
+
+function extensionFor(lang){
+  const m={"C":"main.c","C++":"main.cpp","Assembly language":"main.asm","AssemblyScript":"main.ts","Ada":"main.adb","Dart":"main.dart","F#":"main.fs","Fortran":"main.f90","Pascal":"main.pas","Prolog":"main.pl","OCaml":"main.ml","Clojure":"main.clj","Elixir":"main.exs","Erlang":"main.erl","Julia":"main.jl","Nim":"main.nim","Zig":"main.zig","V":"main.v","Verilog":"main.v","SystemVerilog":"main.sv","C#":"Main.cs","Go":"main.go","Java":"Main.java","JavaScript":"main.js","TypeScript":"main.ts","Python":"main.py","Ruby":"main.rb","Rust":"main.rs","PHP":"main.php","Perl":"main.pl","Lua":"main.lua","R":"main.R","Swift":"main.swift","Kotlin":"Main.kt","Scala":"Main.scala","Haskell":"main.hs","D":"main.d","Nim":"main.nim","Crystal":"main.cr","Elixir":"main.exs","Erlang":"main.erl","Bash":"main.sh"};
+  return m[lang]||"main.txt";
+}
+
+function renderResult(data, elapsed, saved=false){
+  const ok=String(data.status)==="0";
+  if(ok) runStats.success++; else runStats.failed++;
+  runStats.times.push(elapsed);
+  if(runStats.times.length>20) runStats.times.shift();
+  drawRuns();
+
+  runStats.total++; if(String(data.status)==="0") runStats.success++; else runStats.failed++;
+  const out=document.getElementById("output");
+  let s=`$ run (${elapsed} ms)\\n\\n`;
+  if(data.compiler_message) s+="[compiler]\\n"+data.compiler_message+"\\n";
+  if(data.program_message) s+="[program]\\n"+data.program_message+"\\n";
+  if(data.signal) s+="[signal] "+data.signal+"\\n";
+  if(!data.compiler_message && !data.program_message && !data.signal) s+="[program exited with no output]\\n";
+  s+=`\\n[exit status] ${data.status ?? "unknown"}`;
+  if(saved && data.url) s+=`\\n[share] ${data.url}`;
+  out.textContent=s;
+  if(String(data.status)==="0") out.className="oktxt"; else out.className="errtxt";
+}
+
+async function runCode(save=false){
+  const code=document.getElementById("code").value;
+  const compiler=document.getElementById("compiler").value;
+  if(!compiler){ setStatus("No real compiler/runtime is available for this language on the connected service.","err"); document.getElementById("output").textContent="$ run\n\nNo live compiler/runtime is available. Nothing was simulated."; return; }
+  const body={
+    code, compiler,
+    stdin:document.getElementById("stdin").value,
+    options:document.getElementById("options").value.trim(),
+    "runtime-option-raw":document.getElementById("runtime").value.trim(),
+    save
+  };
+  document.getElementById("output").textContent="$ running…\\n";
+  document.getElementById("runBtn").disabled=true;
+  const t=performance.now();
+  try{
+    const r=await fetch(API+"/compile.json",{
+      method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)
+    });
+    const data=await r.json();
+    const elapsed=Math.round(performance.now()-t);
+    renderResult(data,elapsed,save);
+    setStatus(String(data.status)==="0" ? `Run completed • exit 0 • ${elapsed} ms` : `Run finished • exit ${data.status ?? "error"}`,(String(data.status)==="0"?"ok":"err"));
+    if(save && data.url) window.open(data.url,"_blank","noopener");
+  }catch(e){
+    document.getElementById("output").textContent="$ error\\n\\n"+e.message;
+    setStatus("Execution request failed: "+e.message,"err");
+  }finally{document.getElementById("runBtn").disabled=false}
+}
+
+function command(){
+  const v=document.getElementById("command").value.trim();
+  document.getElementById("command").value="";
+  if(!v)return;
+  const [cmd,...args]=v.split(/\\s+/);
+  if(cmd==="clear"){document.getElementById("output").textContent="";return}
+  if(cmd==="run"){runCode(false);return}
+  if(cmd==="help"){
+    document.getElementById("output").textContent=
+`REAL TERMINAL COMMANDS\\n\\nrun       Compile and execute the editor contents\\nclear     Clear terminal output\\nlang      Show current language\\ncompiler  Show current compiler/runtime\\nhelp      Show this help\\n\\nCtrl+Enter also runs the program.`;
+    return;
+  }
+  if(cmd==="lang"){document.getElementById("output").textContent="language: "+document.getElementById("language").value;return}
+  if(cmd==="compiler"){document.getElementById("output").textContent="compiler: "+document.getElementById("compiler").value;return}
+  document.getElementById("output").textContent="$ "+v+"\\nUnknown command. Type help.";
+}
+
+
+document.getElementById("aboutBtn").addEventListener("click",()=>{
+  document.getElementById("output").textContent =
+`REAL TERMINAL — HELP
+
+1. Select a language.
+2. Select a REAL compiler/runtime if one is available.
+3. Enter source code.
+4. Press Run or Ctrl+Enter.
+5. Read [compiler], [program], [signal], and [exit status].
+
+COMMANDS
+help      Show help
+run       Compile and execute
+clear     Clear output
+lang      Show selected language
+compiler  Show selected compiler
+
+LOAD TIME
+The ${CATALOG_LANGUAGES.length} language-name catalog is embedded in this HTML,
+so it does not need to download hundreds of separate language definitions.
+Its page-load contribution is effectively 0 minutes.
+
+The live compiler/runtime list is downloaded from the execution service.
+The number shown above is the ACTUAL measured time for this page load.
+It can vary with your connection and service response time.
+
+SECURITY
+This page sends source code to a remote execution service. Do not submit
+passwords, private keys, API tokens, or other sensitive information.`;
+});
+
+document.getElementById("language").addEventListener("change",updateCompilers);
+document.getElementById("runBtn").addEventListener("click",()=>runCode(false));
+document.getElementById("shareBtn").addEventListener("click",()=>runCode(true));
+document.getElementById("commandBtn").addEventListener("click",command);
+document.getElementById("command").addEventListener("keydown",e=>{if(e.key==="Enter")command()});
+document.getElementById("code").addEventListener("keydown",e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();runCode(false)}
+  if(e.key==="Tab"){e.preventDefault();const el=e.target,s=el.selectionStart;el.value=el.value.slice(0,s)+"    "+el.value.slice(el.selectionEnd);el.selectionStart=el.selectionEnd=s+4}
+});
+
+const guide=document.querySelector(".guide");
+const guideToggle=document.getElementById("guideToggle");
+guideToggle.addEventListener("click",()=>{
+  guide.classList.toggle("collapsed");
+  guideToggle.textContent=guide.classList.contains("collapsed")?"Show guides":"Hide guides";
+});
+
+loadCompilers();
+setTimeout(redrawCharts,300);
+
+let runStats={success:0,failed:0,total:0};
+
+function resizeCanvas(canvas){
+  const r=canvas.getBoundingClientRect(), d=devicePixelRatio||1;
+  canvas.width=Math.max(1,Math.floor(r.width*d));
+  canvas.height=Math.max(1,Math.floor(r.height*d));
+  const c=canvas.getContext("2d"); c.setTransform(d,0,0,d,0,0);
+  return {c,w:r.width,h:r.height};
+}
+function text(c,s,x,y,size=12,align="left"){
+  c.font=`${size}px system-ui,-apple-system,Segoe UI,Arial`;
+  c.fillStyle="#cdd7e3"; c.textAlign=align; c.fillText(s,x,y);
+}
+function drawHealth(){
+  const {c,w,h}=resizeCanvas(document.getElementById("chartHealth"));
+  c.clearRect(0,0,w,h);
+  const total=runStats.total||0, ok=runStats.success, bad=runStats.failed;
+  const cx=w*.35, cy=h*.48, radius=Math.min(w,h)*.29;
+  c.beginPath(); c.arc(cx,cy,radius,0,Math.PI*2); c.lineWidth=22; c.strokeStyle="#202a35"; c.stroke();
+  if(total){
+    const a=ok/total*Math.PI*2;
+    c.beginPath(); c.arc(cx,cy,radius,-Math.PI/2,-Math.PI/2+a); c.lineWidth=22; c.strokeStyle="#65d68a"; c.stroke();
+    if(bad){
+      c.beginPath(); c.arc(cx,cy,radius,-Math.PI/2+a,-Math.PI/2+Math.PI*2); c.lineWidth=22; c.strokeStyle="#ff6b6b"; c.stroke();
+    }
+  }
+  text(c,String(total),cx,cy+5,25,"center"); text(c,"runs",cx,cy+24,11,"center");
+  text(c,"Successful",w*.67,cy-25,12); text(c,String(ok),w*.94,cy-25,12,"right");
+  text(c,"Failed / error",w*.67,cy+5,12); text(c,String(bad),w*.94,cy+5,12,"right");
+  text(c,total?Math.round(ok/total*100)+"% success":"No runs yet",w*.67,cy+38,12);
+}
+function drawPipeline(){
+  const {c,w,h}=resizeCanvas(document.getElementById("chartPipeline"));
+  c.clearRect(0,0,w,h);
+  const labels=["Source","Compiler","Sandbox","Program","Output"];
+  const colors=["#65d68a","#75b7ff","#c19cff","#ffd28a","#65d68a"];
+  const y=h*.5, left=24, right=w-24, gap=(right-left)/(labels.length-1);
+  c.lineWidth=3;c.strokeStyle="#2a3440";c.beginPath();c.moveTo(left,y);c.lineTo(right,y);c.stroke();
+  labels.forEach((lab,i)=>{
+    const x=left+i*gap;
+    c.beginPath();c.arc(x,y,17,0,Math.PI*2);c.fillStyle="#111923";c.fill();c.lineWidth=2;c.strokeStyle=colors[i];c.stroke();
+    text(c,String(i+1),x,y+4,11,"center");
+    text(c,lab,x,y+43,10,"center");
+  });
+  text(c,"You write",left,y-34,10,"center");
+  text(c,"real toolchain",w*.5,y-34,10,"center");
+  text(c,"actual stdout / stderr",right,y-34,10,"center");
+}
+function drawSystems(){
+  const el=document.getElementById("systemList");
+  const all=[...new Set(CATALOG_LANGUAGES)];
+  const live=[...byLanguage.keys()];
+  const liveSet=new Set(live.map(x=>x.toLowerCase()));
+  const groups={};
+  all.forEach(x=>{
+    const letter=(x[0]||"?").toUpperCase();
+    (groups[letter] ||= []).push(x);
+  });
+  const letters=Object.keys(groups).sort();
+  let s=`<div style="margin-bottom:8px;color:#9de8b4"><b>${all.length}</b> catalog languages • <b>${live.length}</b> live compiler entries reported</div>`;
+  for(const L of letters){
+    const rows=groups[L];
+    s+=`<div style="margin:7px 0 3px;color:#65d68a;font-weight:700">${L} — ${rows.length}</div>`;
+    rows.forEach(name=>{
+      const liveNow=liveSet.has(name.toLowerCase());
+      s+=`<div class="systemRow"><span><span class="dot ${liveNow?'live':'off'}"></span>${name}</span><span style="color:${liveNow?'#9de8b4':'#657384'}">${liveNow?'LIVE':'catalog'}</span></div>`;
+    });
+  }
+  el.innerHTML=s;
+}
+function redrawCharts(){drawHealth();drawPipeline();drawSystems()}
+window.addEventListener("resize",redrawCharts);
+</script>
+</body>
+</html>
